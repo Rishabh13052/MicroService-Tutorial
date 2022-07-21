@@ -1,0 +1,185 @@
+Basic Microservice Tutorial
+
+1. Create 2 Rest API for communication purpose
+   A. User API (used 9092 port no.)
+   B. Department API (used 9001 port no.)
+
+2. Now Making the communication purpose(if we have muliplr microservice), we will create the service registry(maintaing microservices).
+	Add dependeny of Eureka Server(used 8761 port no.).
+
+   Add the below in Appliaction.yml file
+   
+   eureka:
+	client:
+	  register-with-eureka: false (beacuse it should not register in eureka server)
+	  fetch-registry: false(same as above)
+	  
+3.  We need to add the EurekaDiscoveryclient dependent to both User and depratment API and also the below properties in Application.yml file.
+	eureka:
+	  client:
+        register-with-eureka: true
+        fetch-registry: true
+        service-url:
+          defaultZone: http://localhost:8761/eureka/
+      instance:
+        hostname: localhost
+		
+4. Create API-Gateway(used 9191 port no.) for configuring all the microservice.
+       Add the Eureka Discovery client, gateway and Spring boot actuator dependency.
+	   
+	   add the below properties in application.properties.
+
+***************
+
+server:
+  port: 9191
+
+spring:
+  application:
+    name: API-GATEWAY
+  cloud:
+    gateway:
+      routes:
+        - id: USER-SERVICE
+          uri: lb://USER-SERVICE
+          predicates:
+            - Path=/users/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: USER-SERVICE
+                fallbackuri: forward:/userServiceFallBack
+        - id: DEPARTMENT-SERVICE
+          uri: lb://DEPARTMENT-SERVICE
+          predicates:
+            - Path=/departments/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: DEPARTMENT-SERVICE
+                fallbackuri: forward:/departmentServiceFallBack
+
+hystrix:
+  command:
+    fallbackcmd:
+      execution:
+        isolation:
+          thread:
+            timeoutInMilliseconds: 5000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: hystrix.stream
+		
+********************
+
+5. Implement CircuitBreaker for checking which services are not running and implementing the fall back method.
+	
+   Add the Hystrix dependency in cloud -gateway API.
+   Add the fallback controller and cretae the fuction for fallback like below:
+   
+   
+   @RestController
+
+public class FallBackMethodController {
+    @GetMapping("userServiceFallBack")
+    public String userServiceFallBackMethod(){
+        return "User Service is taking longer than expected." +
+                "Please try again later";
+    }
+	}
+	
+6. Now add the hystrix information to hystrix dashboard. create Hystrix dashbaord API(used 9295 port no.) and add the below dependency.
+      eurekadisoveryclient and HystrixDashboard.
+	  
+	  Add the below properties in application.yml.
+	  
+server:
+  port: 9295
+
+spring:
+  application:
+    name: HYSTRIX-DASHBOARD
+
+hystrix:
+  dashboard:
+    proxy-stream-allow-list: "*"
+	
+
+for Checking the hystrix stream is working or not, hit the url: http://localhost:9191/actuator/hystrix.stream
+
+and after that give the above url to hystrix dashboard url. http://localhost:9295/hystrix
+
+7. Create Config server(used 9296 port no.) for congiguring the API properties(those properties which are using frequently in every microservices and while changing the
+   field, no need to change in every service. we will create config server in github).
+   
+   Create cloud-config-sever microservice and one repository in github.
+   
+   Add maven dependency config server and eureka discovery client in microservice. properties are like below:
+   
+server:
+  port: 9296
+
+spring:
+  application:
+    name: CONFIG-SERVER
+  cloud:
+    config:
+      server:
+        git:
+          uri: https://github.com/Rishabh13052/config-server
+          clone-on-start: true
+		  
+		  
+after that add ahe below dependency in all the microservices.
+	<dependency>
+			<groupId>org.springframework.cloud</groupId>
+			<artifactId>spring-cloud-starter-config</artifactId>
+		</dependency>
+		
+For getting Cloud-configuration, we need bootstrap.yml file in all microservice. crate the yml file and add the below properties.
+
+spring:
+  cloud:
+    config:
+      enabled: true
+      uri: http://localhost:9296
+	  
+in Git repository, we will add the below properies in github file.
+
+eureka:
+  client:
+    register-with-eureka: true
+    fetch-registry: true
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+  instance:
+    hostname: localhost
+	
+Delete the above properties from all the microservice except service-registry.
+
+8. for tracing the error in microservices, we can use the zipkin and slueth logger(for handling distributed log tracing).
+	Download zar file for zipkin.
+	add the Zipking client and Sleuth maven dependency to user and department microservices. also add below property in application.yml in both
+	 and department service.
+	
+spring:
+  zipkin:
+    base-url: http://127.0.0.1:9411/
+	
+hit the url http://127.0.0.1:9411/ and check the communication between microservice.
+	
+	  
+	  
+
+		  
+		  
+
+	
+	
+	
+	
+	
+    
